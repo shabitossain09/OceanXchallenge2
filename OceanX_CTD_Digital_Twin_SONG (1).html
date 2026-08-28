@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Ocean Column Explorer — Full Water Column CTD Prototype</title>
+<style>
+:root{
+  --bg:#02070b;--panel:#07131c;--line:rgba(255,255,255,.13);
+  --text:#edf7fb;--muted:#9ab9c8;--orange:#ff7043;--cyan:#45d7ff;--yellow:#facc15;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Arial,sans-serif}
+button{font:inherit}
+.app{max-width:1540px;margin:auto;padding:14px}
+.topbar{display:flex;gap:16px;justify-content:space-between;align-items:center;flex-wrap:wrap;padding:14px 16px;background:#040d14;border:1px solid var(--line);border-radius:16px 16px 0 0}
+.eyebrow{font:12px ui-monospace,monospace;letter-spacing:.18em;color:var(--orange)}
+h1{font-size:22px;margin:5px 0 0}
+.buttons{display:flex;gap:8px;flex-wrap:wrap}
+button{min-height:42px;border-radius:10px;border:1px solid var(--line);background:#0a1720;color:var(--text);padding:0 14px;cursor:pointer}
+button.primary{background:var(--orange);color:#101010;border-color:transparent;font-weight:800}
+button.active{outline:2px solid var(--cyan);background:#0f2633}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:14px}
+.viewer{border:1px solid var(--line);border-top:0;background:#06141e;min-width:0}
+#stage{height:760px;position:relative;overflow:hidden;touch-action:none}
+#stage canvas{display:block;width:100%;height:100%}
+.hud{position:absolute;z-index:6;padding:10px 12px;border:1px solid rgba(255,255,255,.15);background:rgba(0,7,12,.48);backdrop-filter:blur(7px);border-radius:10px;pointer-events:none}
+.hud.depth{left:92px;top:12px}.hud.camera{right:12px;top:12px;text-align:right}.hud.live{left:92px;bottom:16px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.tiny{font-size:10px;letter-spacing:.12em;color:#a6dbec}.big{font-size:30px;font-weight:800}
+.livegrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;text-align:center}
+.val{font-weight:750}.lab{font:9px ui-monospace,monospace;color:#add2df}
+.sidebar{display:flex;flex-direction:column;gap:12px;padding-top:14px}
+.card{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:13px}
+.card h3{font-size:15px;margin:0 0 8px}.muted{color:var(--muted);font-size:13px;line-height:1.5}
+.params{display:flex;gap:7px;flex-wrap:wrap}.params button{font-size:12px;padding:0 10px;min-height:38px}
+.legendbar{height:12px;border-radius:999px;margin-top:9px}
+.legendlabels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px}
+#profile{width:100%;display:block;background:#050d13;border-radius:10px}
+.dcm{display:inline-flex;border:1px solid #7c6a1d;color:#ffe777;border-radius:999px;padding:4px 8px;font-size:11px}
+.progressWrap{padding:11px 14px;background:#040d14;border:1px solid var(--line);border-top:0;border-radius:0 0 16px 16px}
+.progressMeta{display:flex;justify-content:space-between;font-size:11px;color:#abc7d2;margin-bottom:7px}
+.progress{height:7px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden}.progress>div{height:100%;width:0;background:var(--orange)}
+input[type=range]{width:100%}
+.zoneNote{font-size:12px;color:#a8cfdd;margin-top:7px}
+.key{display:grid;grid-template-columns:14px 1fr;gap:7px;align-items:center;font-size:12px;color:var(--muted);margin-top:7px}
+.dot{width:9px;height:9px;border-radius:50%}
+
+/* Full water-column ruler */
+#depthRuler{position:absolute;z-index:9;left:8px;top:12px;bottom:16px;width:70px;border-right:1px solid rgba(255,255,255,.2);pointer-events:auto;cursor:ns-resize;touch-action:none;user-select:none}
+#depthRuler::before{content:"";position:absolute;inset:0 -10px 0 0;background:transparent}
+.rulerTitle{position:absolute;top:0;left:0;font:9px ui-monospace,monospace;color:#8fd7ef;letter-spacing:.08em}
+.rtick{position:absolute;right:0;width:30px;height:1px;background:rgba(255,255,255,.27)}
+.rlabel{position:absolute;right:35px;transform:translateY(-50%);font:10px ui-monospace,monospace;color:#bce8f5}
+#depthMarker{position:absolute;right:-9px;width:17px;height:17px;border-radius:50%;background:var(--yellow);border:2px solid #fff7b2;transform:translateY(-50%);box-shadow:0 0 15px rgba(250,204,21,.85);cursor:grab}
+#depthMarker:active{cursor:grabbing}
+#depthTrail{position:absolute;right:-2px;top:18px;width:3px;background:rgba(250,204,21,.72);height:0}
+
+/* lower water-column annotation */
+#columnLabel{position:absolute;z-index:5;left:92px;top:105px;padding:7px 9px;border-radius:8px;background:rgba(0,8,14,.38);font:10px ui-monospace,monospace;color:#b9deea;pointer-events:none}
+
+@media(max-width:1000px){.layout{grid-template-columns:1fr}.sidebar{padding-top:0}#stage{height:680px}}
+@media(max-width:600px){#stage{height:560px}.hud.live{right:12px}.livegrid{grid-template-columns:repeat(2,1fr)}.hud.depth{left:78px}.hud.live{left:78px}#columnLabel{left:78px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">OCEANX · CTD DIGITAL TWIN</div>
+      <h1>BAY OF BENGAL - (21.2° N, 89.4° E)</h1>
+    </div>
+    <div class="buttons">
+      <button id="play" class="primary">▶ Start cast</button>
+      <button id="pause">Pause</button>
+      <button id="reset">Reset</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div>
+      <div class="viewer">
+        <div id="stage">
+          <div id="loading" style="position:absolute;inset:0;z-index:20;display:grid;place-items:center;background:#061821;color:#aee9ff">Loading 3D ocean…</div>
+
+          <div id="depthRuler" aria-label="Depth scale from 0 to 4000 metres">
+            <div class="rulerTitle">DEPTH</div>
+            <div id="depthTrail"></div>
+            <div id="depthMarker" title="Drag to scrub depth"></div><div id="rulerDepthBubble" style="position:absolute;right:10px;transform:translateY(-50%);padding:3px 6px;border-radius:6px;background:#4a3c00;color:#fff4a3;font:10px ui-monospace,monospace;white-space:nowrap">0 m</div>
+          </div>
+
+          <div class="hud depth">
+            <div class="tiny mono">LIVE DEPTH</div>
+            <div><span id="depth" class="big">0</span> <span style="font-size:12px">m</span></div>
+            <div id="zone" class="tiny mono">SURFACE</div>
+          </div>
+
+          <div class="hud camera">
+            <div class="tiny mono" style="color:#ffc19f">CAMERA</div>
+            <div id="shot">Overhead deployment</div>
+            <div id="timer" class="tiny mono">00:00</div>
+          </div>
+
+          <div class="hud live">
+            <div class="livegrid">
+              <div><div class="lab">TEMP</div><div id="tv" class="val">28.4 °C</div></div>
+              <div><div class="lab">SALINITY</div><div id="sv" class="val">33.20</div></div>
+              <div><div class="lab">O₂</div><div id="ov" class="val">6.10</div></div>
+              <div><div class="lab">FLUORESCENCE</div><div id="fv" class="val">0.18</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="progressWrap">
+        <div class="progressMeta"><span>5 m</span><span id="progressDepth">0 / 4000 m</span><span>4000 m</span></div>
+        <div class="progress"><div id="progress"></div></div>
+        <div class="zoneNote">Drag the <strong style="color:#facc15">yellow point on the left depth bar</strong> to inspect any depth. The first 300 m is deliberately slower during the automatic cast.</div>
+      </div>
+    </div>
+
+    <aside class="sidebar">
+      <div class="card">
+        <h3>3D interpolated field</h3>
+        <div class="muted">The gradient stays <strong>above and behind the CTD</strong>. Drag the yellow depth marker or click a 3D gradient layer to inspect its measurements.</div>
+        <div class="params" style="margin-top:10px">
+          <button data-p="temp" class="param active">Temperature</button>
+          <button data-p="sal" class="param">Salinity</button>
+          <button data-p="oxy" class="param">O₂</button>
+          <button data-p="fluor" class="param">Fluorescence</button>
+        </div>
+        <div id="legend"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+          <h3 style="margin:0">Live CTD depth profile</h3>
+          <span id="dcmBadge" class="dcm">DCM: waiting</span>
+        </div>
+        <svg id="profile" viewBox="0 0 300 350" aria-label="Live CTD parameter profile"></svg>
+      </div>
+
+      <div class="card">
+        <h3>Euphotic-zone biology</h3>
+        <div class="muted">Illustrative organisms are concentrated from 5–200 m. They are visually distinct from measured/interpolated CTD data.</div>
+        <div class="key"><span class="dot" style="background:#78e08f"></span><span>Phytoplankton / microalgae</span></div>
+        <div class="key"><span class="dot" style="background:#d7ef72"></span><span>Diatom-like cells</span></div>
+        <div class="key"><span class="dot" style="background:#ffb56e"></span><span>Small zooplankton</span></div>
+        <div class="key"><span class="dot" style="background:#dceef3"></span><span>Marine snow through the deep water</span></div>
+      </div>
+
+
+      <div class="card" id="probeCard">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <h3 style="margin:0">3D data probe</h3>
+          <span id="probeSource" class="dcm" style="border-color:#315c6d;color:#9de5ff">CTD</span>
+        </div>
+        <div class="muted" style="margin-top:7px">Click the CTD or any colored gradient layer to read its data. Double-click it to zoom/focus there.</div>
+        <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;font-size:13px">
+          <div><span class="tiny mono">DEPTH</span><div id="probeDepth" class="val">0 m</div></div>
+          <div><span class="tiny mono">TEMP</span><div id="probeTemp" class="val">28.4 °C</div></div>
+          <div><span class="tiny mono">SALINITY</span><div id="probeSal" class="val">33.20 PSU</div></div>
+          <div><span class="tiny mono">O₂</span><div id="probeOxy" class="val">6.10 mg/L</div></div>
+          <div><span class="tiny mono">FLUOR.</span><div id="probeFluor" class="val">0.18 RFU</div></div>
+          <div><span class="tiny mono">FEATURE</span><div id="probeFeature" class="val">Surface</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Camera</h3>
+        <div class="params">
+          <button data-cam="auto" class="cam active">Auto full-column</button>
+          <button data-cam="follow" class="cam">Follow CTD</button>
+          <button data-cam="orbit" class="cam">Orbit CTD</button>
+          <button data-cam="top" class="cam">Top / bathymetry</button>
+        </div>
+        <div class="muted" style="margin-top:8px">Mouse drag = orbit · wheel = zoom · right drag = pan · click = inspect · double-click = zoom to data/CTD.</div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script type="module">
+const q=s=>document.querySelector(s);
+const stage=q('#stage'),loading=q('#loading');
+const play=q('#play'),pause=q('#pause'),reset=q('#reset');
+const depthEl=q('#depth'),zoneEl=q('#zone'),shotEl=q('#shot'),timerEl=q('#timer');
+const progress=q('#progress'),progressDepth=q('#progressDepth');
+const tv=q('#tv'),sv=q('#sv'),ov=q('#ov'),fv=q('#fv');
+const svg=q('#profile'),legend=q('#legend'),dcmBadge=q('#dcmBadge');
+const marker=q('#depthMarker'),trail=q('#depthTrail'),ruler=q('#depthRuler'),rulerBubble=q('#rulerDepthBubble');
+const probeSource=q('#probeSource'),probeDepthEl=q('#probeDepth'),probeTemp=q('#probeTemp'),probeSal=q('#probeSal'),probeOxy=q('#probeOxy'),probeFluor=q('#probeFluor'),probeFeature=q('#probeFeature');
+
+try{
+  const THREE=await import('https://cdn.jsdelivr.net/npm/three@0.169.0/+esm');
+  const {OrbitControls}=await import('https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/controls/OrbitControls.js/+esm');
+
+  const scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x0b6683);
+  scene.fog=new THREE.FogExp2(0x0b6683,.0065);
+
+  const camera=new THREE.PerspectiveCamera(40,1,.1,650);
+  camera.position.set(42,-20,78);
+
+  const renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+  renderer.shadowMap.enabled=true;
+  stage.appendChild(renderer.domElement);
+
+  const controls=new OrbitControls(camera,renderer.domElement);
+  controls.enableDamping=true; controls.dampingFactor=.055;
+  controls.target.set(0,-26,0);
+  controls.minDistance=1.8; controls.maxDistance=220;
+  controls.enablePan=true;
+
+  scene.add(new THREE.HemisphereLight(0xe6fbff,0x02121d,2.5));
+  const sun=new THREE.DirectionalLight(0xffffff,4.0);sun.position.set(6,18,8);scene.add(sun);
+  const fill=new THREE.PointLight(0x53d8ff,14,70,2);fill.position.set(-6,-8,8);scene.add(fill);
+
+  // Depth compression: 0–4000 m -> 52 scene units.
+  function depthToY(d){return -1-(d/4000)*52}
+
+  // Ocean surface.
+  const wg=new THREE.PlaneGeometry(60,60,110,110);wg.rotateX(-Math.PI/2);
+  const wp=wg.attributes.position,wb=new Float32Array(wp.array);
+  const waterMat=new THREE.MeshPhysicalMaterial({
+    color:0x117b9e,roughness:.14,metalness:.02,transparent:true,opacity:.76,
+    clearcoat:.82,clearcoatRoughness:.12,transmission:.12,side:THREE.DoubleSide
+  });
+  const water=new THREE.Mesh(wg,waterMat);scene.add(water);
+
+  // Bathymetry / seabed.
+  const seabedGeo=new THREE.PlaneGeometry(62,62,80,80);seabedGeo.rotateX(-Math.PI/2);
+  const bp=seabedGeo.attributes.position;
+  for(let i=0;i<bp.count;i++){
+    const x=bp.getX(i),z=bp.getZ(i);
+    const ridge=1.7*Math.sin(x*.13)*Math.cos(z*.11)+1.1*Math.sin((x+z)*.18)+.55*Math.cos(z*.31);
+    bp.setY(i,ridge);
+  }
+  seabedGeo.computeVertexNormals();
+  const seabedMat=new THREE.MeshStandardMaterial({
+    color:0x5f665d,
+    roughness:.95,
+    metalness:0,
+    transparent:true,
+    opacity:0
+  });
+  const seabed=new THREE.Mesh(seabedGeo,seabedMat);
+  seabed.position.y=depthToY(4000)-1.4;
+  seabed.receiveShadow=true;
+  seabed.userData.probeType='bathymetry';
+  seabed.userData.depth=4000;
+  seabed.visible=false; // hidden for the entire CTD descent
+  scene.add(seabed);
+
+  // CTD.
+  const ctd=new THREE.Group();ctd.position.y=9;ctd.scale.setScalar(.78);scene.add(ctd);
+  const metal=new THREE.MeshStandardMaterial({color:0xb8c2c9,metalness:.9,roughness:.23});
+  const dark=new THREE.MeshStandardMaterial({color:0x303940,metalness:.65,roughness:.34});
+  const white=new THREE.MeshStandardMaterial({color:0xdedbd2,roughness:.47});
+  const sens=new THREE.MeshStandardMaterial({color:0x202a31,metalness:.55,roughness:.32});
+  function mesh(g,m,p,x=0,y=0,z=0){const o=new THREE.Mesh(g,m);o.position.set(x,y,z);o.castShadow=true;o.userData.probeType='ctd';p.add(o);return o}
+  function tor(r,t,y){const o=mesh(new THREE.TorusGeometry(r,t,16,72),metal,ctd,0,y,0);o.rotation.x=Math.PI/2}
+  tor(3,.12,-1.8);tor(3,.12,1.5);tor(1.15,.1,-1.8);tor(1.15,.1,1.5);
+  for(let i=0;i<12;i++){const a=i*Math.PI*2/12;mesh(new THREE.CylinderGeometry(.075,.075,3.3,12),metal,ctd,Math.cos(a)*2.98,-.14,Math.sin(a)*2.98)}
+  for(let i=0;i<12;i++){
+    const a=i*Math.PI*2/12,g=new THREE.Group();g.position.set(Math.cos(a)*2.24,-.08,Math.sin(a)*2.24);ctd.add(g);
+    mesh(new THREE.CylinderGeometry(.30,.30,2.7,22),white,g);
+    mesh(new THREE.CylinderGeometry(.35,.35,.13,22),dark,g,0,1.4);
+    mesh(new THREE.CylinderGeometry(.35,.35,.13,22),dark,g,0,-1.4);
+  }
+  mesh(new THREE.CylinderGeometry(.72,.8,1.95,30),sens,ctd,0,-.45);
+  mesh(new THREE.CylinderGeometry(.88,.88,.17,30),dark,ctd,0,.55);
+  mesh(new THREE.CylinderGeometry(.88,.88,.17,30),dark,ctd,0,-1.45);
+  mesh(new THREE.CylinderGeometry(.12,.12,2.3,14),metal,ctd,0,2.5);
+
+  const cable=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xe1eaec,transparent:true,opacity:.9}));
+  scene.add(cable);
+
+  // Splash.
+  const rings=[];
+  for(let i=0;i<6;i++){
+    const r=new THREE.Mesh(new THREE.RingGeometry(.7,.86,80),new THREE.MeshBasicMaterial({color:0xe9fbff,transparent:true,opacity:.72,side:THREE.DoubleSide,depthWrite:false}));
+    r.rotation.x=-Math.PI/2;r.position.y=.12;r.visible=false;scene.add(r);rings.push(r);
+  }
+
+  // Bubbles.
+  const bubbles=[];
+  for(let i=0;i<150;i++){
+    const b=new THREE.Mesh(new THREE.SphereGeometry(.07,8,8),new THREE.MeshPhysicalMaterial({color:0xedfcff,transparent:true,opacity:.38,transmission:.5}));
+    b.visible=false;scene.add(b);bubbles.push({m:b,l:0,s:1});
+  }
+
+  // Marine snow, distributed across full water column.
+  const N=2200,snowPos=new Float32Array(N*3),snowSpeed=new Float32Array(N);
+  for(let i=0;i<N;i++){
+    snowPos[i*3]=(Math.random()-.5)*60;
+    snowPos[i*3+1]=depthToY(Math.random()*4000);
+    snowPos[i*3+2]=(Math.random()-.5)*60;
+    snowSpeed[i]=.4+Math.random()*1.8;
+  }
+  const snowGeo=new THREE.BufferGeometry();snowGeo.setAttribute('position',new THREE.BufferAttribute(snowPos,3));
+  const snowMat=new THREE.PointsMaterial({color:0xe7f3f5,size:.045,transparent:true,opacity:.45,depthWrite:false});
+  const snow=new THREE.Points(snowGeo,snowMat);scene.add(snow);
+
+  // Euphotic-zone biology (5–200 m).
+  const bio=new THREE.Group();scene.add(bio);
+  const phytoMat=new THREE.MeshStandardMaterial({color:0x78e08f,emissive:0x173c22,emissiveIntensity:.5,roughness:.55});
+  const diatomMat=new THREE.MeshStandardMaterial({color:0xd7ef72,emissive:0x4b531e,emissiveIntensity:.35,roughness:.5});
+  const zooMat=new THREE.MeshStandardMaterial({color:0xffb56e,emissive:0x5b2d13,emissiveIntensity:.25,roughness:.6});
+  const biological=[];
+  for(let i=0;i<220;i++){
+    const d=5+Math.pow(Math.random(),1.25)*195;
+    const y=depthToY(d);
+    const a=Math.random()*Math.PI*2,r=2.5+Math.random()*10;
+    let obj,type,f=Math.random();
+    if(f<.55){obj=new THREE.Mesh(new THREE.SphereGeometry(.045+Math.random()*.055,8,8),phytoMat.clone());type='phyto'}
+    else if(f<.82){obj=new THREE.Mesh(new THREE.CylinderGeometry(.035,.035,.12+Math.random()*.08,8),diatomMat.clone());obj.rotation.z=Math.random()*Math.PI;type='diatom'}
+    else{obj=new THREE.Mesh(new THREE.SphereGeometry(.08+Math.random()*.07,8,8),zooMat.clone());obj.scale.set(1.6,.65,.9);type='zoo'}
+    obj.position.set(Math.cos(a)*r,y+(Math.random()-.5)*.45,Math.sin(a)*r);
+    bio.add(obj);biological.push({m:obj,depth:d,phase:Math.random()*Math.PI*2,speed:.3+Math.random()*.7,type});
+  }
+
+  // Synthetic prototype parameter profiles.
+  function vals(d){
+    const temp=Math.max(2.2,28.4-20*(1-Math.exp(-d/470))-.00038*Math.max(0,d-900));
+    const sal=33.2+1.55*(1-Math.exp(-d/720))-.13*Math.exp(-Math.pow((d-220)/170,2));
+    const oxy=6.1-3.8*(1-Math.exp(-d/420))+1.05*d/4000;
+    const fluor=.08+.18*Math.exp(-d/450)+2.85*Math.exp(-Math.pow((d-115)/42,2));
+    return{temp,sal,oxy,fluor};
+  }
+  const DCM_DEPTH=115,DCM_FLUOR=vals(DCM_DEPTH).fluor;
+
+  const palettes={
+    temp:{range:[2,30],stops:[[0,'#243b88'],[.28,'#1ea5c9'],[.55,'#6acb78'],[.78,'#f0c84b'],[1,'#d94b35']],label:'Temperature',unit:'°C'},
+    sal:{range:[33,35],stops:[[0,'#2b6cb0'],[.35,'#4fc3c8'],[.7,'#8ccf70'],[1,'#e6c44f']],label:'Salinity',unit:'PSU'},
+    oxy:{range:[1.5,6.5],stops:[[0,'#692d91'],[.25,'#3d63b8'],[.55,'#2aa6a1'],[.78,'#77c968'],[1,'#e6d95c']],label:'Dissolved O₂',unit:'mg/L'},
+    fluor:{range:[0,3.2],stops:[[0,'#172554'],[.18,'#164e63'],[.4,'#0f766e'],[.7,'#65a30d'],[1,'#facc15']],label:'Fluorescence',unit:'RFU'}
+  };
+  function col(s){return new THREE.Color(s)}
+  function colorAt(pal,v){
+    const u=Math.max(0,Math.min(1,(v-pal.range[0])/(pal.range[1]-pal.range[0])));
+    for(let i=0;i<pal.stops.length-1;i++){
+      const a=pal.stops[i],b=pal.stops[i+1];
+      if(u>=a[0]&&u<=b[0])return col(a[1]).lerp(col(b[1]),(u-a[0])/(b[0]-a[0]));
+    }
+    return col(pal.stops.at(-1)[1]);
+  }
+
+  // Dynamic gradient trail.
+  // Offset slightly behind CTD in Z, and only reveal layers ABOVE current CTD.
+  const field=new THREE.Group();field.position.z=-5;scene.add(field);
+  const layers=[],layerCount=220;
+  for(let i=0;i<layerCount;i++){
+    const d=5+i/(layerCount-1)*(4000-5),y=depthToY(d);
+    const mat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.13,side:THREE.DoubleSide,depthWrite:false});
+    const slab=new THREE.Mesh(new THREE.BoxGeometry(9,.24,3.4),mat);
+    slab.position.set(0,y,0);slab.visible=false;slab.userData.probeType='field';slab.userData.depth=d;field.add(slab);layers.push({mesh:slab,depth:d});
+  }
+
+  // DCM marker in 3D.
+  const dcmGroup=new THREE.Group();dcmGroup.visible=false;scene.add(dcmGroup);
+  const dcmY=depthToY(DCM_DEPTH);
+  const dcmPoint=new THREE.Mesh(new THREE.SphereGeometry(.25,18,18),new THREE.MeshStandardMaterial({color:0xfacc15,emissive:0x8a7100,emissiveIntensity:.8}));
+  dcmPoint.position.set(6.2,dcmY,0);dcmPoint.userData.probeType='dcm';dcmPoint.userData.depth=DCM_DEPTH;dcmGroup.add(dcmPoint);
+  const dcmLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,dcmY,0),new THREE.Vector3(6.2,dcmY,0)]),new THREE.LineBasicMaterial({color:0xfacc15}));
+  dcmGroup.add(dcmLine);
+  function makeLabel(text){
+    const c=document.createElement('canvas');c.width=620;c.height=150;const x=c.getContext('2d');
+    x.fillStyle='rgba(0,8,14,.88)';x.fillRect(4,4,612,142);x.strokeStyle='#facc15';x.lineWidth=4;x.strokeRect(4,4,612,142);
+    x.fillStyle='#fff';x.font='bold 38px sans-serif';x.fillText(text,24,58);x.fillStyle='#facc15';x.font='26px sans-serif';x.fillText('Deep Chlorophyll Maximum',24,106);
+    const tex=new THREE.CanvasTexture(c);const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false}));sp.scale.set(7.4,1.8,1);return sp;
+  }
+  const dcmLabel=makeLabel('DCM depth: '+DCM_DEPTH+' m');dcmLabel.position.set(10.1,dcmY+.65,0);dcmGroup.add(dcmLabel);
+
+  // Depth ruler ticks.
+  const ticks=[0,200,500,1000,2000,3000,4000];
+  for(const d of ticks){
+    const p=d/4000;
+    const tick=document.createElement('div');tick.className='rtick';tick.style.top=(18+p*(ruler.clientHeight-24))+'px';
+    const lab=document.createElement('div');lab.className='rlabel';lab.style.top=(18+p*(ruler.clientHeight-24))+'px';lab.textContent=d;
+    tick.dataset.depth=d;lab.dataset.depth=d;ruler.appendChild(tick);ruler.appendChild(lab);
+  }
+
+  let state='idle',paused=false,time=0,depth=0,impact=false,param='temp',camMode='auto',endTopStarted=false,focusDepth=null;
+  const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
+  const clock=new THREE.Clock(),ease=x=>x*x*(3-2*x);
+
+  function zone(d){return d<200?'EUPHOTIC / EPIPELAGIC':d<1000?'MESOPELAGIC':d<4000?'BATHYPELAGIC':'SEABED'}
+  function renderLegend(){
+    const p=palettes[param];
+    legend.innerHTML='<div class="legendbar" style="background:linear-gradient(90deg,'+p.stops.map(s=>s[1]).join(',')+')"></div><div class="legendlabels"><span>'+p.range[0]+' '+p.unit+'</span><span>'+p.range[1]+' '+p.unit+'</span></div>';
+  }
+  function updateField(){
+    const p=palettes[param];
+    for(const L of layers){
+      // sampled field appears from 5 m down to just ABOVE CTD, never covering CTD itself
+      L.mesh.visible=depth>=5 && L.depth<=Math.max(5,depth-8);
+      if(L.mesh.visible){
+        L.mesh.material.color.copy(colorAt(p,vals(L.depth)[param]));
+        L.mesh.material.opacity=.13;
+      }
+    }
+    renderLegend();
+  }
+  function updateBiology(tt){
+    for(const b of biological){
+      b.m.visible=true; // full upper-water community remains visible for wide-column view
+      b.m.position.x+=Math.sin(tt*b.speed+b.phase)*.0013;
+      b.m.position.z+=Math.cos(tt*b.speed*.8+b.phase)*.0013;
+      b.m.rotation.y+=.004*b.speed;
+    }
+  }
+  function drawProfile(){
+    const pal=palettes[param],range=pal.range,pts=[];
+    for(let d=5;d<=Math.max(5,depth);d+=10){
+      const v=vals(d)[param],x=55+(v-range[0])/(range[1]-range[0])*220,y=26+d/4000*285;pts.push([x,y]);
+    }
+    let dcmSvg='';
+    if(param==='fluor'&&depth>=DCM_DEPTH){
+      const x=55+(DCM_FLUOR-range[0])/(range[1]-range[0])*220,y=26+DCM_DEPTH/4000*285;
+      dcmSvg='<line x1="48" x2="282" y1="'+y+'" y2="'+y+'" stroke="#facc15" stroke-dasharray="4 4"/><circle cx="'+x+'" cy="'+y+'" r="5" fill="#facc15"/><text x="150" y="'+Math.max(18,y-7)+'" font-size="10" fill="#facc15">DCM '+DCM_DEPTH+' m</text>';
+    }
+    svg.innerHTML='<line x1="50" y1="24" x2="50" y2="312" stroke="#8fb8c8" opacity=".35"/><line x1="50" y1="312" x2="280" y2="312" stroke="#8fb8c8" opacity=".35"/><text x="5" y="29" font-size="10" fill="#91b7c7">5 m</text><text x="3" y="170" font-size="10" fill="#91b7c7">2000</text><text x="3" y="314" font-size="10" fill="#91b7c7">4000</text><polyline points="'+pts.map(p=>p.join(',')).join(' ')+'" fill="none" stroke="#dff7ff" stroke-width="2.5"/>'+dcmSvg+'<text x="55" y="338" font-size="11" fill="#9fc4d2">'+pal.label+' ('+pal.unit+')</text>';
+  }
+  function updateRuler(){
+    const h=Math.max(1,ruler.clientHeight-24),p=Math.min(1,Math.max(0,depth/4000)),y=18+p*h;
+    marker.style.top=y+'px';trail.style.height=Math.max(0,y-18)+'px';rulerBubble.style.top=y+'px';rulerBubble.textContent=Math.round(depth)+' m';
+  }
+  function hud(){
+    const p=Math.min(100,depth/40),v=vals(depth);
+    depthEl.textContent=Math.round(depth);zoneEl.textContent=depth?zone(depth):'SURFACE';
+    progress.style.width=p+'%';progressDepth.textContent=Math.round(depth)+' / 4000 m';
+    tv.textContent=v.temp.toFixed(1)+' °C';sv.textContent=v.sal.toFixed(2)+' PSU';ov.textContent=v.oxy.toFixed(2)+' mg/L';fv.textContent=v.fluor.toFixed(2)+' RFU';
+    timerEl.textContent='00:'+String(Math.floor(time)).padStart(2,'0');
+    if(depth>=DCM_DEPTH){dcmBadge.textContent='DCM: '+DCM_DEPTH+' m';dcmGroup.visible=true}else{dcmBadge.textContent='DCM: searching…';dcmGroup.visible=false}
+    updateRuler();updateField();drawProfile();
+  }
+
+  function featureAt(d){
+    if(Math.abs(d-DCM_DEPTH)<=18)return 'DCM region';
+    if(d<200)return 'Euphotic zone';
+    if(d<1000)return 'Mesopelagic';
+    if(d<4000)return 'Bathypelagic';
+    return 'Seabed / bathymetry';
+  }
+  function showProbe(d,source='Interpolated field'){
+    d=Math.max(0,Math.min(4000,d));
+    const v=vals(d);
+    probeSource.textContent=source;
+    probeDepthEl.textContent=Math.round(d)+' m';
+    probeTemp.textContent=v.temp.toFixed(1)+' °C';
+    probeSal.textContent=v.sal.toFixed(2)+' PSU';
+    probeOxy.textContent=v.oxy.toFixed(2)+' mg/L';
+    probeFluor.textContent=v.fluor.toFixed(2)+' RFU';
+    probeFeature.textContent=featureAt(d);
+  }
+  function setDepthFromRuler(clientY){
+    const rect=ruler.getBoundingClientRect(),topPad=18,bottomPad=6;
+    const usable=Math.max(1,rect.height-topPad-bottomPad);
+    const p=Math.max(0,Math.min(1,(clientY-rect.top-topPad)/usable));
+    const d=p*4000;
+    state='run';paused=true;pause.textContent='Resume';time=timeFromDepth(d);
+    applyDepthEnvironment(d);ctd.position.y=depthToY(d);
+    shotEl.textContent='Depth-bar inspection';showProbe(d,'Depth bar');hud();
+  }
+  function focusAtDepth(d,source='Data point'){
+    focusDepth=Math.max(0,Math.min(4000,d));
+    camMode='focus';
+    document.querySelectorAll('.cam').forEach(b=>b.classList.remove('active'));
+    shotEl.textContent='Focused: '+source+' · '+Math.round(focusDepth)+' m';
+  }
+
+  function splash(){
+    impact=true;
+    rings.forEach((r,i)=>{r.visible=true;r.scale.setScalar(.3+i*.09);r.material.opacity=.72-i*.06});
+  }
+  function emitBubbles(){
+    if(depth>300)return;
+    for(let k=0;k<3;k++){
+      const b=bubbles.find(x=>!x.m.visible);if(!b)return;
+      const a=Math.random()*Math.PI*2,r=.3+Math.random()*2.3;
+      b.m.position.set(Math.cos(a)*r,ctd.position.y-1-Math.random()*2,Math.sin(a)*r);
+      b.l=1.5+Math.random()*2.5;b.s=.8+Math.random()*1.5;b.m.visible=true;
+    }
+  }
+  function oceanUpdate(tt){
+    const a=wp.array;
+    for(let i=0;i<wp.count;i++){
+      const k=i*3,x=wb[k],z=wb[k+2];
+      a[k+1]=Math.sin(x*.58+tt)*.22+Math.cos(z*.48-tt*.73)*.17+Math.sin((x+z)*.29+tt*.55)*.09;
+    }
+    wp.needsUpdate=true;wg.computeVertexNormals();
+  }
+  function fx(dt){
+    rings.forEach((r,i)=>{if(!r.visible)return;r.scale.addScalar(dt*(1.5+i*.15));r.material.opacity-=dt*.28;if(r.material.opacity<=0)r.visible=false});
+    bubbles.forEach(b=>{if(!b.m.visible)return;b.l-=dt;if(b.l<=0){b.m.visible=false;return}b.m.position.y+=b.s*dt});
+    const a=snowGeo.attributes.position.array;
+    for(let i=0;i<N;i++){
+      a[i*3+1]+=snowSpeed[i]*dt*.15;
+      if(a[i*3+1]>0){a[i*3+1]=depthToY(4000);a[i*3]=(Math.random()-.5)*60;a[i*3+2]=(Math.random()-.5)*60}
+    }
+    snowGeo.attributes.position.needsUpdate=true;
+  }
+  function cableUpdate(){
+    cable.geometry.dispose();
+    cable.geometry=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,16,0),new THREE.Vector3(0,ctd.position.y+3,0)]);
+  }
+
+  // Timing:
+  // 0–3 s deployment / surface impact.
+  // 3–15 s = 0–300 m (12 seconds, intentionally slower upper-ocean section).
+  // 15–51 s = 300–4000 m.
+  // 51–54 s = camera transitions to a true top-down bottom view.
+  // 54–57 s = bathymetry is revealed only after the top view is established.
+  function depthFromTime(t){
+    if(t<3)return 0;
+    if(t<15)return (t-3)/12*300;
+    if(t<51)return 300+(t-15)/36*3700;
+    return 4000;
+  }
+  function timeFromDepth(d){
+    if(d<=300)return 3+(d/300)*12;
+    return 15+((d-300)/3700)*36;
+  }
+
+  function applyDepthEnvironment(d){
+    depth=Math.max(0,Math.min(4000,d));
+    ctd.position.y=depthToY(depth);
+    // Keep visibility constant at every depth: no depth-based fade/darkening.
+    scene.background.set(0x0b6683);
+    scene.fog.color.set(0x0b6683);
+    scene.fog.density=.0065;
+    sun.intensity=4;
+    fill.intensity=14;
+  }
+
+  function simulate(dt){
+    if(paused||state!=='run')return;
+    time+=dt;
+
+    if(time<3){
+      const p=ease(time/3);
+      ctd.position.y=9-9.7*p;ctd.rotation.y+=dt*.3;depth=0;
+      shotEl.textContent=time<2.25?'Overhead fall':'Surface impact · side transition';
+      if(ctd.position.y<.7&&!impact)splash();
+    }else if(time<51){
+      applyDepthEnvironment(depthFromTime(time));
+      ctd.rotation.y+=dt*.33;ctd.rotation.z=Math.sin(time*.55)*.018;
+      emitBubbles();
+      shotEl.textContent=depth<300?'0–300 m · slow upper-ocean survey':'Full water column · CTD descending';
+    }else{
+      depth=4000;
+      ctd.position.y=depthToY(4000)+1.5;
+
+      if(time<54){
+        // First establish the top-down camera. Bathymetry is still hidden.
+        seabed.visible=false;
+        seabedMat.opacity=0;
+        shotEl.textContent='4000 m reached · moving to top view';
+      }else{
+        // Once the camera is overhead, reveal the bathymetry smoothly.
+        const reveal=Math.min(1,(time-54)/3);
+        seabed.visible=true;
+        seabedMat.opacity=ease(reveal);
+        shotEl.textContent=reveal<1?'Top view · revealing bathymetry':'Top view · bathymetry revealed';
+
+        if(time>=57){
+          state='done';
+          play.disabled=false;
+          play.textContent='Replay cast';
+          shotEl.textContent='Top view · bathymetry at 4000 m';
+        }
+      }
+    }
+    hud();
+  }
+
+  function cameraChoreo(){
+    if(camMode==='focus'){
+      const y=depthToY(focusDepth===null?depth:focusDepth);
+      camera.position.lerp(new THREE.Vector3(5.0,y+1.8,6.2),.085);
+      controls.target.lerp(new THREE.Vector3(0,y,0),.11);return;
+    }
+    if(camMode==='top'){
+      camera.position.lerp(new THREE.Vector3(.01,depthToY(4000)+30,.01),.06);
+      controls.target.lerp(new THREE.Vector3(0,depthToY(4000)-1,0),.08);return;
+    }
+    if(camMode==='follow'){
+      camera.position.lerp(new THREE.Vector3(5.5,ctd.position.y+2.0,7.0),.07);
+      controls.target.lerp(ctd.position,.1);return;
+    }
+    if(camMode==='orbit'){
+      const a=performance.now()*.0005,r=10;
+      camera.position.lerp(new THREE.Vector3(Math.cos(a)*r,ctd.position.y+2.5,Math.sin(a)*r),.06);
+      controls.target.lerp(ctd.position,.1);return;
+    }
+
+    // AUTO:
+    if(time<3){
+      const p=ease(time/3);
+      camera.position.lerp(new THREE.Vector3(.01,21-p*5,.01),.1);
+      controls.target.lerp(new THREE.Vector3(0,ctd.position.y-.5,0),.12);
+    }else if(time<51){
+      // From the moment the CTD enters the water, keep the COMPLETE 0–4000 m
+      // water column in frame. The camera starts at a moderately close overview
+      // and progressively pulls farther back as the CTD descends.
+      const p=Math.min(1,depth/4000);
+      const surfaceY=depthToY(0);
+      const bottomY=depthToY(4000);
+      const midY=(surfaceY+bottomY)/2;
+
+      // Full column visible from the start, with increasing camera distance.
+      const startPos=new THREE.Vector3(34,midY+2,62);
+      const endPos=new THREE.Vector3(50,midY+5,92);
+      const desired=startPos.clone().lerp(endPos,Math.pow(p,.95));
+
+      camera.position.lerp(desired,.045);
+
+      // Keep the full column centered, with a slight tracking bias toward CTD
+      // so its downward motion remains visually obvious.
+      const trackY=midY*.78 + ctd.position.y*.22;
+      controls.target.lerp(new THREE.Vector3(0,trackY,0),.055);
+
+      // Constant visibility: no fading or depth darkening.
+      water.material.opacity=.76;
+      scene.background.set(0x0b6683);
+      scene.fog.color.set(0x0b6683);
+      scene.fog.density=.0065;
+      sun.intensity=4;
+      fill.intensity=14;
+    }else{
+      // After reaching 4000 m, move from the full-column side view
+      // to a true top-down view centred on the seabed/CTD.
+      const bottomY=depthToY(4000);
+      const k=ease(Math.min(1,(time-51)/3));
+
+      const startPos=new THREE.Vector3(50,((depthToY(0)+bottomY)/2)+5,92);
+      const topPos=new THREE.Vector3(.01,bottomY+34,.01);
+      const desired=startPos.clone().lerp(topPos,k);
+
+      camera.position.lerp(desired,.065);
+      controls.target.lerp(new THREE.Vector3(0,bottomY-1.4,0),.085);
+
+      // No scene fading. Bathymetry visibility is controlled separately
+      // and begins only after the top view is established.
+      water.material.opacity=.76;
+      scene.background.set(0x0b6683);
+      scene.fog.color.set(0x0b6683);
+      scene.fog.density=.0065;
+      sun.intensity=4;
+      fill.intensity=14;
+    }
+  }
+
+  function resetAll(){
+    state='idle';paused=false;time=0;depth=0;impact=false;endTopStarted=false;camMode='auto';focusDepth=null;
+    ctd.position.set(0,9,0);ctd.rotation.set(0,0,0);
+    camera.position.set(42,-20,78);controls.target.set(0,-26,0);controls.update();
+    rings.forEach(r=>r.visible=false);bubbles.forEach(b=>b.m.visible=false);layers.forEach(L=>L.mesh.visible=false);
+    dcmGroup.visible=false;
+    seabed.visible=false;
+    seabedMat.opacity=0;
+    water.material.opacity=.76;
+    scene.background.set(0x0b6683);scene.fog.color.set(0x0b6683);scene.fog.density=.0065;
+    sun.intensity=4;fill.intensity=14;
+    play.disabled=false;play.textContent='▶ Start cast';pause.textContent='Pause';shotEl.textContent='Overhead deployment';document.querySelectorAll('.cam').forEach(b=>b.classList.toggle('active',b.dataset.cam==='auto'));showProbe(0,'CTD');
+    hud();
+  }
+
+  play.addEventListener('click',()=>{resetAll();state='run';play.disabled=true;play.textContent='Cast running…'});
+  pause.addEventListener('click',()=>{if(state==='idle'||state==='done')return;paused=!paused;pause.textContent=paused?'Resume':'Pause'});
+  reset.addEventListener('click',resetAll);
+
+
+
+  // Left depth ruler is the scrubber.
+  let rulerDragging=false;
+  ruler.addEventListener('pointerdown',e=>{
+    rulerDragging=true;ruler.setPointerCapture(e.pointerId);setDepthFromRuler(e.clientY);e.preventDefault();
+  });
+  ruler.addEventListener('pointermove',e=>{if(rulerDragging){setDepthFromRuler(e.clientY);e.preventDefault();}});
+  ruler.addEventListener('pointerup',e=>{rulerDragging=false;try{ruler.releasePointerCapture(e.pointerId)}catch(_){} });
+  ruler.addEventListener('pointercancel',()=>{rulerDragging=false});
+
+  // 3D probe: click = inspect; double click = inspect + zoom/focus.
+  function pickAtEvent(e,doFocus=false){
+    const rect=renderer.domElement.getBoundingClientRect();
+    pointer.x=((e.clientX-rect.left)/rect.width)*2-1;
+    pointer.y=-((e.clientY-rect.top)/rect.height)*2+1;
+    raycaster.setFromCamera(pointer,camera);
+    const targets=[...layers.map(L=>L.mesh),dcmPoint];
+    if(seabed.visible && seabedMat.opacity>.05)targets.push(seabed);
+    ctd.traverse(o=>{if(o.isMesh)targets.push(o)});
+    const hits=raycaster.intersectObjects(targets,false);
+    if(!hits.length)return;
+    const obj=hits[0].object,type=obj.userData.probeType;
+    let d=depth,source='CTD';
+    if(type==='field'){d=obj.userData.depth;source=palettes[param].label+' field'}
+    else if(type==='bathymetry'){d=4000;source='Bathymetry'}
+    else if(type==='dcm'){d=DCM_DEPTH;source='DCM'}
+    showProbe(d,source);
+    if(doFocus)focusAtDepth(d,source);
+  }
+  let downX=0,downY=0,moved=false;
+  renderer.domElement.addEventListener('pointerdown',e=>{downX=e.clientX;downY=e.clientY;moved=false});
+  renderer.domElement.addEventListener('pointermove',e=>{if(Math.hypot(e.clientX-downX,e.clientY-downY)>6)moved=true});
+  renderer.domElement.addEventListener('pointerup',e=>{if(!moved)pickAtEvent(e,false)});
+  renderer.domElement.addEventListener('dblclick',e=>pickAtEvent(e,true));
+
+  document.querySelectorAll('.param').forEach(btn=>btn.addEventListener('click',()=>{
+    param=btn.dataset.p;
+    document.querySelectorAll('.param').forEach(b=>b.classList.toggle('active',b===btn));
+    updateField();drawProfile();
+  }));
+
+  document.querySelectorAll('.cam').forEach(btn=>btn.addEventListener('click',()=>{
+    camMode=btn.dataset.cam;focusDepth=null;
+    document.querySelectorAll('.cam').forEach(b=>b.classList.toggle('active',b===btn));
+  }));
+
+  function resize(){
+    const r=stage.getBoundingClientRect(),w=Math.max(300,r.width),h=Math.max(460,r.height);
+    renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
+    const rh=Math.max(1,ruler.clientHeight-24);ruler.querySelectorAll('.rtick,.rlabel').forEach(el=>{const d=Number(el.dataset.depth||0);el.style.top=(18+(d/4000)*rh)+'px'});updateRuler();
+  }
+  new ResizeObserver(resize).observe(stage);
+  resize();loading.remove();resetAll();
+
+  function loop(){
+    const dt=Math.min(clock.getDelta(),.04),tt=clock.elapsedTime;
+    oceanUpdate(tt);simulate(dt);fx(dt);updateBiology(tt);cableUpdate();cameraChoreo();controls.update();renderer.render(scene,camera);
+    requestAnimationFrame(loop);
+  }
+  loop();
+
+}catch(err){
+  console.error(err);
+  loading.textContent='3D engine could not load. Open this HTML in Chrome/Edge with an internet connection.';
+}
+</script>
+</body>
+</html>
